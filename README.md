@@ -11,3 +11,7 @@
 * IndexedDB for persistent storage
 * Editable
 * 100% free
+
+## Example
+
+![image](https://github.com/user-attachments/assets/4e721a6a-c4b7-4756-9dd2-bf42d02a28c9)
