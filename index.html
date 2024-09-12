@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Map Overlay Editor | Edit and Save Your Changes!</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <style>
+        html, body, #map { height: 100%; margin: 0; padding: 0; }
+        .leaflet-popup-content input { width: 100%; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <script>
+        var map, editableLayers;
+        var db;
+
+        const dbName = "MapDB";
+        const storeName = "areas";
+        const dbVersion = 1;
+
+        const request = indexedDB.open(dbName, dbVersion);
+
+        request.onerror = function(event) {
+            console.log("Error opening DB", event);
+        };
+
+        request.onsuccess = function(event) {
+            db = event.target.result;
+            console.log("DB opened successfully");
+            initMap();
+        };
+
+        request.onupgradeneeded = function(event) {
+            db = event.target.result;
+            const objectStore = db.createObjectStore(storeName, { keyPath: "id", autoIncrement: true });
+            console.log("Object store created");
+        };
+
+        function initMap() {
+            map = L.map('map').setView([23.6345, -102.5528], 5);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            editableLayers = new L.FeatureGroup();
+            map.addLayer(editableLayers);
+
+            loadAreas();
+
+            var drawControl = new L.Control.Draw({
+                edit: { featureGroup: editableLayers },
+                draw: { polygon: true, polyline: false, rectangle: false, circle: false, marker: false, circlemarker: false }
+            });
+            map.addControl(drawControl);
+
+            map.on('draw:created', function(e) {
+                var layer = e.layer;
+                addArea(layer);
+            });
+
+            map.on('draw:edited', function(e) {
+                var layers = e.layers;
+                layers.eachLayer(function(layer) {
+                    updateArea(layer);
+                });
+            });
+
+            map.on('draw:deleted', function(e) {
+                var layers = e.layers;
+                layers.eachLayer(function(layer) {
+                    deleteArea(layer);
+                });
+            });
+        }
+
+        function createPopupContent(layer) {
+            var div = document.createElement('div');
+            var input = document.createElement('input');
+            input.type = 'text';
+            input.value = layer.name || 'New Area';
+            var button = document.createElement('button');
+            button.textContent = 'Save';
+            button.onclick = function() {
+                layer.name = input.value;
+                updateArea(layer);
+                layer.closePopup();
+            };
+            div.appendChild(input);
+            div.appendChild(button);
+            return div;
+        }
+
+        function loadAreas() {
+            const transaction = db.transaction([storeName], "readonly");
+            const objectStore = transaction.objectStore(storeName);
+            const request = objectStore.getAll();
+
+            request.onerror = function(event) {
+                console.log("Error loading areas", event);
+            };
+
+            request.onsuccess = function(event) {
+                const areas = event.target.result;
+                areas.forEach(function(area) {
+                    const polygon = L.polygon(area.coords, {color: area.color, fillColor: area.color, fillOpacity: 0.3});
+                    polygon.id = area.id;
+                    polygon.name = area.name;
+                    polygon.bindPopup(createPopupContent(polygon));
+                    editableLayers.addLayer(polygon);
+                });
+            };
+        }
+
+        function addArea(layer) {
+            const newArea = {
+                name: layer.name || 'New Area',
+                coords: layer.getLatLngs()[0].map(latlng => [latlng.lat, latlng.lng]),
+                color: '#' + Math.floor(Math.random()*16777215).toString(16)
+            };
+
+            const transaction = db.transaction([storeName], "readwrite");
+            const objectStore = transaction.objectStore(storeName);
+            const request = objectStore.add(newArea);
+
+            request.onerror = function(event) {
+                console.log("Error adding area", event);
+            };
+
+            request.onsuccess = function(event) {
+                console.log("Area added successfully");
+                layer.id = event.target.result;
+                layer.name = newArea.name;
+                layer.setStyle({color: newArea.color, fillColor: newArea.color, fillOpacity: 0.3});
+                layer.bindPopup(createPopupContent(layer));
+                editableLayers.addLayer(layer);
+            };
+        }
+
+        function updateArea(layer) {
+            const updatedArea = {
+                id: layer.id,
+                name: layer.name,
+                coords: layer.getLatLngs()[0].map(latlng => [latlng.lat, latlng.lng]),
+                color: layer.options.color
+            };
+
+            const transaction = db.transaction([storeName], "readwrite");
+            const objectStore = transaction.objectStore(storeName);
+            const request = objectStore.put(updatedArea);
+
+            request.onerror = function(event) {
+                console.log("Error updating area", event);
+            };
+
+            request.onsuccess = function(event) {
+                console.log("Area updated successfully");
+                layer.bindPopup(createPopupContent(layer));
+            };
+        }
+
+        function deleteArea(layer) {
+            const transaction = db.transaction([storeName], "readwrite");
+            const objectStore = transaction.objectStore(storeName);
+            const request = objectStore.delete(layer.id);
+
+            request.onerror = function(event) {
+                console.log("Error deleting area", event);
+            };
+
+            request.onsuccess = function(event) {
+                console.log("Area deleted successfully");
+                editableLayers.removeLayer(layer);
+            };
+        }
+
+        window.addEventListener('resize', function() { map.invalidateSize(); });
+    </script>
+</body>
+</html>
