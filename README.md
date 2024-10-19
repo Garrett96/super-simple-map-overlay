@@ -35,7 +35,7 @@ This project stores data in your browser. It needs to make at least one initial 
 *edits & changes still store locally when all connections blocked.*
 
 ![ssmo-offline-render-error](https://github.com/user-attachments/assets/58896bf8-9c7b-42d4-a7e3-0af0b9c23edd)
-*higher zoom levels are wonkier when entirely offline. this could be resolved if I was better at cacheing.*
+*zooming in-and-out when entirely offline can be wonky. could be resolved if I was better at cacheing.*
 
 ## License
 This project is licensed under the MIT License.
